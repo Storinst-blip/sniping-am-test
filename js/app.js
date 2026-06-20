@@ -554,7 +554,7 @@ function aiCheck(userText, q) {
   const t = setTimeout(() => ctrl.abort(), 8000);
   return fetch(url, { signal: ctrl.signal })
     .then(r => r.json())
-    .then(d => { clearTimeout(t); return (d && typeof d.correct === 'boolean') ? d.correct : null; })
+    .then(d => { clearTimeout(t); return (d && typeof d.correct === 'boolean') ? { correct: d.correct, reason: d.reason || '' } : null; })
     .catch(() => { clearTimeout(t); return null; });
 }
 
@@ -596,8 +596,7 @@ function doCheck(text) {
   document.getElementById('after').innerHTML = '<div class="gate-hint">Проверяю по смыслу… ⚡</div>';
   // ИИ-проверка приоритетна; оффлайн — резерв, если нет сети
   aiCheck(text, q).then(res => {
-    if (res === true) return showVerdict(true, 'ai');
-    if (res === false) return showVerdict(false, 'ai');
+    if (res) return showVerdict(res.correct, 'ai', res.reason);
     const off = checkOffline(text, q);
     if (off === 'yes') return showVerdict(true, 'offline');
     if (off === 'no') return showVerdict(false, 'offline');
@@ -605,7 +604,7 @@ function doCheck(text) {
   });
 }
 
-function showVerdict(ok, by) {
+function showVerdict(ok, by, reason) {
   const q = S.questions[S.idx];
   if (ok) S.correct++; else S.wrong++;
   const p = loadProgress();
@@ -613,8 +612,10 @@ function showVerdict(ok, by) {
   saveProgress(p);
   logEvent('input', q.themeId, q.id, ok);
   const tag = by === 'ai' ? ' <span class="by-ai">⚡ИИ</span>' : '';
+  const aiReason = reason ? `<div class="explain"><b>Разбор.</b> ${esc(reason)}</div>` : '';
   document.getElementById('after').innerHTML = `
     <div class="feedback ${ok ? 'ok' : 'no'}">${ok ? '✔ Верно!' : '✗ Неверно'}${tag}</div>
+    ${aiReason}
     <div class="explain"><b>Эталон.</b> ${esc(q.options[q.correct])}${q.explanation ? '<br><br>💡 ' + esc(q.explanation) : ''}</div>
     <button class="btn btn-primary" id="next"><div class="btn-title">${S.idx === S.questions.length - 1 ? 'Завершить' : 'Дальше →'}</div></button>
   `;
