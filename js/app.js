@@ -544,19 +544,18 @@ function checkOffline(userText, q) {
   if (cov <= 0.2) return 'no';
   return 'unsure';
 }
-// ИИ-проверка спорных случаев (заработает после настройки ключа в Apps Script). Возвращает true/false/null.
+// ИИ-проверка по смыслу через Claude (GET — без CORS-проблем). Возвращает true/false/null.
 function aiCheck(userText, q) {
   if (!ANALYTICS_URL) return Promise.resolve(null);
+  const url = ANALYTICS_URL + '?checkq=' + encodeURIComponent(q.q)
+    + '&checkc=' + encodeURIComponent(q.options[q.correct])
+    + '&checka=' + encodeURIComponent(userText);
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 7000);
-  return fetch(ANALYTICS_URL, {
-    method: 'POST', signal: ctrl.signal,
-    body: JSON.stringify({ action: 'check', q: q.q, correct: q.options[q.correct], answer: userText })
-  }).then(r => r.json()).then(d => {
-    clearTimeout(t);
-    if (d && d.action === 'check' && typeof d.correct === 'boolean') return d.correct;
-    return null;
-  }).catch(() => { clearTimeout(t); return null; });
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  return fetch(url, { signal: ctrl.signal })
+    .then(r => r.json())
+    .then(d => { clearTimeout(t); return (d && typeof d.correct === 'boolean') ? d.correct : null; })
+    .catch(() => { clearTimeout(t); return null; });
 }
 
 /* ============ Режим «Ввод ответа» ============ */
@@ -590,20 +589,19 @@ function renderInput() {
 function doCheck(text) {
   if (S.locked) return;
   const q = S.questions[S.idx];
-  const off = checkOffline(text, q);
-  if (off === 'empty') { document.getElementById('after').innerHTML = '<div class="gate-err">Напиши ответ.</div>'; return; }
+  if (!normalizeText(text)) { document.getElementById('after').innerHTML = '<div class="gate-err">Напиши ответ.</div>'; return; }
   S.locked = true;
   document.getElementById('check').style.display = 'none';
   document.getElementById('ans').disabled = true;
-
-  if (off === 'yes') return showVerdict(true, 'offline');
-  if (off === 'no') return showVerdict(false, 'offline');
-  // unsure → пробуем ИИ
-  document.getElementById('after').innerHTML = '<div class="gate-hint">Проверяю по смыслу…</div>';
+  document.getElementById('after').innerHTML = '<div class="gate-hint">Проверяю по смыслу… ⚡</div>';
+  // ИИ-проверка приоритетна; оффлайн — резерв, если нет сети
   aiCheck(text, q).then(res => {
     if (res === true) return showVerdict(true, 'ai');
     if (res === false) return showVerdict(false, 'ai');
-    showSelfAssess(); // ИИ недоступен — самооценка
+    const off = checkOffline(text, q);
+    if (off === 'yes') return showVerdict(true, 'offline');
+    if (off === 'no') return showVerdict(false, 'offline');
+    showSelfAssess(); // и ИИ, и оффлайн не дали ответа — самооценка
   });
 }
 
