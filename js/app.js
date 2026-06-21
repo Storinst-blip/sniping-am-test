@@ -2,10 +2,11 @@
 
 /* ============ Данные ============ */
 let DATA = null;
+// inputPct — доля вопросов с вводом текста своими словами (проверяет ИИ в конце).
 const EXAM_LEVELS = {
-  easy:   { key: 'easy',   title: 'Лёгкий',  count: 10, timeSec: 0,    back: true,  pass: 0 },
-  medium: { key: 'medium', title: 'Средний', count: 30, timeSec: 0,    back: true,  pass: 0 },
-  hard:   { key: 'hard',   title: 'Сложный', count: 50, timeSec: 1500, back: false, pass: 80 }
+  easy:   { key: 'easy',   title: 'Лёгкий',  count: 10, timeSec: 0,    back: true,  pass: 0,  inputPct: 0.2 },
+  medium: { key: 'medium', title: 'Средний', count: 20, timeSec: 0,    back: true,  pass: 0,  inputPct: 0.3 },
+  hard:   { key: 'hard',   title: 'Сложный', count: 30, timeSec: 1500, back: false, pass: 80, inputPct: 0.4 }
 };
 let examInterval = null;
 const app = document.getElementById('app');
@@ -225,7 +226,7 @@ function renderAdminLogin() {
       .then(r => r.json())
       .then(d => {
         if (!d.ok) { document.getElementById('err').textContent = 'Неверный пароль.'; return; }
-        renderAdminDashboard(d.rows);
+        renderAdminDashboard(d.rows, d.inputs || []);
       })
       .catch(() => { document.getElementById('err').textContent = 'Ошибка загрузки.'; });
   };
@@ -233,9 +234,35 @@ function renderAdminLogin() {
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 }
 
-function renderAdminDashboard(rows) {
-  // rows[0] — заголовок; далее [ts, name, mode, themeId, questionId, correct]
-  const data = rows.slice(1);
+let ADMIN_DATA = null;
+function admFmtDate(s) { try { return new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function admThemeName(id) { const t = DATA.themes.find(t => String(t.id) === String(id)); return t ? t.title : ('Тема ' + id); }
+
+function renderAdminDashboard(rows, inputs) {
+  ADMIN_DATA = { rows: rows || [], inputs: inputs || [] };
+  renderAdminTab('summary');
+}
+
+function admTabs(active) {
+  return `
+    <div class="adm-tabs">
+      <button class="adm-tab ${active === 'summary' ? 'active' : ''}" id="tab-sum">📊 Сводка</button>
+      <button class="adm-tab ${active === 'inputs' ? 'active' : ''}" id="tab-inp">✍️ Ввод-ответы</button>
+    </div>`;
+}
+function admWireTabs(active) {
+  document.getElementById('back').onclick = renderHome;
+  document.getElementById('refresh').onclick = renderAdminLogin;
+  const ts = document.getElementById('tab-sum'); if (ts) ts.onclick = () => renderAdminTab('summary');
+  const ti = document.getElementById('tab-inp'); if (ti) ti.onclick = () => renderAdminTab('inputs');
+}
+function renderAdminTab(tab) {
+  if (tab === 'inputs') renderAdminInputs(); else renderAdminSummary();
+}
+
+// Вкладка «Сводка» — агрегаты по пользователям (как было).
+function renderAdminSummary() {
+  const data = ADMIN_DATA.rows.slice(1); // [ts, name, mode, themeId, questionId, correct]
   const byUser = {};
   data.forEach(r => {
     const name = r[1] || '—', mode = r[2], theme = String(r[3]), correct = Number(r[5]) === 1, ts = r[0];
@@ -247,34 +274,58 @@ function renderAdminDashboard(rows) {
     u.themes[theme].t++; if (correct) u.themes[theme].c++;
     if (ts > u.last) u.last = ts;
   });
-
   const names = Object.keys(byUser).sort((a, b) => byUser[b].total - byUser[a].total);
-  const themeName = id => { const t = DATA.themes.find(t => String(t.id) === String(id)); return t ? t.title : ('Тема ' + id); };
-  const fmtDate = s => { try { return new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
-
   const cards = names.map(n => {
     const u = byUser[n];
     const pct = u.total ? Math.round(u.correct / u.total * 100) : 0;
     const themesHtml = Object.keys(u.themes).sort((a, b) => Number(a) - Number(b)).map(tid => {
       const th = u.themes[tid]; const p = Math.round(th.c / th.t * 100);
-      return `<div class="adm-theme"><span>${esc(themeName(tid))}</span><span class="adm-th-num">${th.c}/${th.t} · ${p}%</span></div>`;
+      return `<div class="adm-theme"><span>${esc(admThemeName(tid))}</span><span class="adm-th-num">${th.c}/${th.t} · ${p}%</span></div>`;
     }).join('');
     return `
       <div class="admin-card">
         <div class="adm-head"><span class="adm-name">${esc(n)}</span><span class="adm-pct">${pct}%</span></div>
-        <div class="adm-sub">Ответов: ${u.total} · верно: ${u.correct} · ${fmtDate(u.last)}</div>
+        <div class="adm-sub">Ответов: ${u.total} · верно: ${u.correct} · ${admFmtDate(u.last)}</div>
         <div class="adm-themes">${themesHtml}</div>
       </div>`;
   }).join('');
-
   app.innerHTML = `
-    <div class="topbar"><button class="back-btn" id="back">← Меню</button><h2>Сводка</h2></div>
+    <div class="topbar"><button class="back-btn" id="back">← Меню</button><h2>Админ</h2></div>
+    ${admTabs('summary')}
     <p class="gate-hint">Пользователей: ${names.length} · всего ответов: ${data.length}</p>
     <button class="btn" id="refresh"><div class="btn-title">↻ Обновить</div></button>
     ${cards || '<p class="gate-hint">Пока нет данных.</p>'}
   `;
-  document.getElementById('back').onclick = renderHome;
-  document.getElementById('refresh').onclick = renderAdminLogin;
+  admWireTabs('summary');
+}
+
+// Вкладка «Ввод-ответы» — детальный лог развёрнутых ответов (новые сверху).
+function renderAdminInputs() {
+  // inputs[0] — шапка; далее [ts, name, mode, themeId, questionId, question, answer, correct, reason]
+  const rows = ADMIN_DATA.inputs.slice(1).slice().reverse();
+  const modeLabel = m => ({ input: 'Ввод', exam: 'Экзамен', practice: 'Повторение' }[m] || (m || '—'));
+  const cards = rows.map(r => {
+    const ts = r[0], name = r[1] || '—', mode = r[2], answer = r[6], correct = Number(r[7]) === 1, reason = r[8], question = r[5];
+    return `
+      <div class="inp-card ${correct ? 'ok' : 'no'}">
+        <div class="inp-head">
+          <span class="adm-name">${esc(name)}</span>
+          <span class="inp-meta">${esc(modeLabel(mode))} · ${admFmtDate(ts)}</span>
+        </div>
+        <div class="inp-q">${esc(question)}</div>
+        <div class="inp-a"><b>Ответ:</b> ${esc(answer || '—')}</div>
+        <div class="inp-verdict ${correct ? 'v-ok' : 'v-no'}">${correct ? '✔ зачтено' : '✗ не зачтено'}</div>
+        ${reason ? `<div class="inp-reason">👨‍🏫 ${esc(reason)}</div>` : ''}
+      </div>`;
+  }).join('');
+  app.innerHTML = `
+    <div class="topbar"><button class="back-btn" id="back">← Меню</button><h2>Админ</h2></div>
+    ${admTabs('inputs')}
+    <p class="gate-hint">Развёрнутых ответов: ${rows.length} (новые сверху)</p>
+    <button class="btn" id="refresh"><div class="btn-title">↻ Обновить</div></button>
+    ${cards || '<p class="gate-hint">Пока нет развёрнутых ответов.</p>'}
+  `;
+  admWireTabs('inputs');
 }
 
 /* ============ Меню «Темы» ============ */
@@ -344,18 +395,18 @@ function renderExamSetup() {
   clearExamTimer();
   app.innerHTML = `
     <div class="topbar"><button class="back-btn" id="back">← Меню</button><h2>Экзамен</h2></div>
-    <div class="mode-desc">Выбери уровень. Чем сложнее — тем больше вопросов и жёстче условия.</div>
+    <div class="mode-desc">Выбери уровень. Чем сложнее — тем больше вопросов, часть из них нужно написать своими словами (проверит ИИ в конце), и жёстче условия.</div>
     <button class="btn btn-primary lvl" data-l="easy">
       <div class="btn-title">🟢 Лёгкий</div>
-      <div class="btn-desc">10 вопросов · без таймера · можно листать назад</div>
+      <div class="btn-desc">10 вопросов · ~2 с вводом текста · без таймера · можно листать назад</div>
     </button>
     <button class="btn btn-primary lvl" data-l="medium">
       <div class="btn-title">🟡 Средний</div>
-      <div class="btn-desc">30 вопросов · без таймера · можно листать назад</div>
+      <div class="btn-desc">20 вопросов · ~6 с вводом текста · без таймера · можно листать назад</div>
     </button>
     <button class="btn btn-mistakes lvl" data-l="hard">
       <div class="btn-title">🔴 Сложный</div>
-      <div class="btn-desc">50 вопросов · таймер 25 мин · без возврата · проходной 80%</div>
+      <div class="btn-desc">30 вопросов · ~12 с вводом текста · таймер 25 мин · без возврата · проходной 80%</div>
     </button>
   `;
   document.getElementById('back').onclick = renderHome;
@@ -367,9 +418,14 @@ function startExam(levelKey) {
   const all = allQuestions();
   const pool = shuffle(all).slice(0, Math.min(lvl.count, all.length));
   const questions = pool.map(prepareQuestion);
+  // часть вопросов — с вводом текста своими словами (доля зависит от уровня)
+  const inputCount = Math.round(questions.length * (lvl.inputPct || 0));
+  const inputIdx = new Set(shuffle(questions.map((_, i) => i)).slice(0, inputCount));
+  questions.forEach((q, i) => { q.kind = inputIdx.has(i) ? 'input' : 'test'; });
   S = {
     mode: 'exam', level: lvl, questions,
     answers: new Array(questions.length).fill(null), idx: 0,
+    verdicts: {}, // ИИ-вердикты по input-вопросам (заполняются в finishExam)
     timeLeft: lvl.timeSec > 0 ? lvl.timeSec : null
   };
   if (lvl.timeSec > 0) startExamTimer();
@@ -544,13 +600,18 @@ function checkOffline(userText, q) {
   if (cov <= 0.2) return 'no';
   return 'unsure';
 }
-// ИИ-проверка по смыслу через Claude (GET — без CORS-проблем). Возвращает true/false/null.
-function aiCheck(userText, q) {
+// ИИ-проверка по смыслу через Claude (GET — без CORS-проблем). Возвращает {correct,reason}/null.
+// mode — откуда пришёл ответ ('input' | 'exam' | 'practice'); сервер пишет его в лог inputs.
+function aiCheck(userText, q, mode) {
   if (!ANALYTICS_URL) return Promise.resolve(null);
   const tok = (window.SNIPING_CONFIG && window.SNIPING_CONFIG.checkToken) || '';
   const url = ANALYTICS_URL + '?checkq=' + encodeURIComponent(q.q)
     + '&checkc=' + encodeURIComponent(q.options[q.correct])
     + '&checka=' + encodeURIComponent(userText)
+    + '&name=' + encodeURIComponent(USER || getUser() || '')
+    + '&mode=' + encodeURIComponent(mode || 'input')
+    + '&themeId=' + encodeURIComponent(q.themeId != null ? q.themeId : '')
+    + '&questionId=' + encodeURIComponent(q.id != null ? q.id : '')
     + '&t=' + encodeURIComponent(tok);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 8000);
@@ -597,7 +658,7 @@ function doCheck(text) {
   document.getElementById('ans').disabled = true;
   document.getElementById('after').innerHTML = '<div class="gate-hint">Проверяю по смыслу… ⚡</div>';
   // ИИ-проверка приоритетна; оффлайн — резерв, если нет сети
-  aiCheck(text, q).then(res => {
+  aiCheck(text, q, 'input').then(res => {
     if (res) return showVerdict(res.correct, 'ai', res.reason);
     const off = checkOffline(text, q);
     if (off === 'yes') return showVerdict(true, 'offline');
@@ -689,7 +750,9 @@ function drawPractice() {
   }
   const idx = S.bag[S.pos++];
   S.prev = idx;
-  S.questions.push(prepareQuestion(S.pool[idx]));
+  const item = prepareQuestion(S.pool[idx]);
+  item.kind = Math.random() < 0.5 ? 'input' : 'test'; // микс: ~половина вопросов — ввод текста
+  S.questions.push(item);
   S.answers.push(null);
 }
 
@@ -707,11 +770,27 @@ function startTheme(themeId, fresh) {
 }
 
 /* ============ Рендер вопроса (универсальный) ============ */
-function answeredCount() { return S.answers.filter(a => a !== null).length; }
-function correctCount() { return S.answers.filter((a, i) => a !== null && a === S.questions[i].correct).length; }
+// Универсальные «отвечен ли» / «верно ли» — учитывают вопросы с вводом текста.
+// input в exam → ответ хранится строкой; input в practice → объектом {text,correct,...} после проверки.
+function qAnswered(i) {
+  const q = S.questions[i], a = S.answers[i];
+  if (q.kind === 'input') {
+    if (S.mode === 'exam') return typeof a === 'string' && a.trim() !== '';
+    return a != null && typeof a === 'object';
+  }
+  return a !== null;
+}
+function qCorrect(i) {
+  const q = S.questions[i], a = S.answers[i];
+  if (q.kind === 'input') return !!(a && typeof a === 'object' && a.correct);
+  return a !== null && a === q.correct;
+}
+function answeredCount() { let n = 0; for (let i = 0; i < S.questions.length; i++) if (qAnswered(i)) n++; return n; }
+function correctCount() { let n = 0; for (let i = 0; i < S.questions.length; i++) if (qCorrect(i)) n++; return n; }
 
 function renderQuestion() {
   const q = S.questions[S.idx];
+  if (q.kind === 'input') return renderQuestionInput(); // вопрос с вводом текста — отдельный рендер
   const ans = S.answers[S.idx];
   const answered = ans !== null;
   const reveal = S.mode !== 'exam' && answered; // показать правильность (темы/повторение)
@@ -772,6 +851,125 @@ function renderQuestion() {
   const fin = document.getElementById('finish'); if (fin) fin.onclick = goNext;
 }
 
+/* ====== Рендер вопроса с вводом текста (экзамен и повторение) ====== */
+function renderQuestionInput() {
+  const q = S.questions[S.idx];
+  const isExam = S.mode === 'exam';
+  const stored = S.answers[S.idx];
+  const checked = (!isExam && stored && typeof stored === 'object') ? stored : null; // practice: уже проверено
+  const textVal = isExam ? (typeof stored === 'string' ? stored : '') : (checked ? checked.text : '');
+  const answered = isExam ? (textVal.trim() !== '') : !!checked;
+  const last = S.mode !== 'practice' && S.idx === S.questions.length - 1;
+
+  const timerHtml = (isExam && S.timeLeft != null)
+    ? ` · <span class="timer ${S.timeLeft <= 30 ? 'low' : ''}" id="timer">⏱ ${fmtTime(Math.max(0, S.timeLeft))}</span>` : '';
+  const topRight = S.mode === 'practice'
+    ? `✔ ${correctCount()} / ${answeredCount()}`
+    : `Вопрос ${S.idx + 1} / ${S.questions.length}${timerHtml}`;
+  const bar = S.mode === 'practice' ? '' :
+    `<div class="progress-bar"><span style="width:${Math.round((S.idx) / S.questions.length * 100)}%"></span></div>`;
+  const backLabel = isExam ? '← Выход' : '← Меню';
+  const prevDisabled = (S.idx === 0 || (isExam && S.level && !S.level.back)) ? 'disabled' : '';
+
+  // фидбэк показываем только в повторении (после проверки); в экзамене разбор будет в конце
+  let feedbackHtml = '';
+  if (checked) {
+    const tag = checked.by === 'ai' ? ' <span class="by-ai">⚡ИИ</span>' : '';
+    const aiReason = checked.reason ? `<div class="explain coach">👨‍🏫 ${esc(checked.reason)}</div>` : '';
+    feedbackHtml = `
+      <div class="feedback ${checked.correct ? 'ok' : 'no'}">${checked.correct ? '✔ Верно!' : '✗ Неверно'}${tag}</div>
+      ${aiReason}
+      <div class="explain"><b>Эталон.</b> ${esc(q.options[q.correct])}${q.explanation ? '<br><br>💡 ' + esc(q.explanation) : ''}</div>`;
+  }
+
+  const hint = isExam
+    ? '✍️ Ответь своими словами — проверю в конце экзамена.'
+    : '✍️ Ответь своими словами, потом нажми «Проверить».';
+  const checkBtn = (!isExam && !checked)
+    ? '<button class="btn btn-primary" id="pcheck"><div class="btn-title">Проверить</div></button>' : '';
+
+  let rightBtn;
+  if (isExam) {
+    const id = last ? 'finish' : 'next';
+    const label = last ? 'Завершить экзамен' : 'Вперёд →';
+    rightBtn = `<button class="btn btn-primary nav-btn" id="${id}" ${answered ? '' : 'disabled'}><div class="btn-title">${label}</div></button>`;
+  } else {
+    // повторение: «Вперёд» доступна только после проверки
+    rightBtn = `<button class="btn btn-primary nav-btn" id="next" ${checked ? '' : 'disabled'}><div class="btn-title">Вперёд →</div></button>`;
+  }
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="back-btn" id="back">${backLabel}</button>
+      <span class="progress">${topRight}</span>
+    </div>
+    ${bar}
+    <span class="theme-tag">✍️ ${esc(q.theme)}</span>
+    <p class="question">${esc(q.q)}</p>
+    <p class="gate-hint">${hint}</p>
+    <textarea class="answer-input" id="examans" rows="4" placeholder="Напиши ответ своими словами…"
+      autocapitalize="sentences" autocorrect="on" ${checked ? 'disabled' : ''}>${esc(textVal)}</textarea>
+    <div id="pafter">${feedbackHtml}</div>
+    ${checkBtn}
+    <div class="nav-row">
+      <button class="btn nav-btn" id="prev" ${prevDisabled}><div class="btn-title">← Назад</div></button>
+      ${rightBtn}
+    </div>
+  `;
+
+  document.getElementById('back').onclick = onBack;
+  const ta = document.getElementById('examans');
+  const prevB = document.getElementById('prev'); if (prevB && !prevDisabled) prevB.onclick = goPrev;
+  const nextB = document.getElementById('next'); if (nextB) nextB.onclick = goNext;
+  const finB = document.getElementById('finish'); if (finB) finB.onclick = goNext;
+
+  if (isExam && ta) {
+    ta.oninput = () => {
+      S.answers[S.idx] = ta.value;
+      const has = ta.value.trim() !== '';
+      const nb = document.getElementById('next'); if (nb) nb.disabled = !has;
+      const fb = document.getElementById('finish'); if (fb) fb.disabled = !has;
+    };
+  }
+  const pc = document.getElementById('pcheck');
+  if (pc && ta) pc.onclick = () => doCheckPractice(ta.value);
+}
+
+// Проверка ответа с вводом в повторении (ИИ → оффлайн → самооценка), затем показываем разбор сразу.
+function doCheckPractice(text) {
+  const q = S.questions[S.idx];
+  if (!normalizeText(text)) { document.getElementById('pafter').innerHTML = '<div class="gate-err">Напиши ответ.</div>'; return; }
+  const ta = document.getElementById('examans'); if (ta) ta.disabled = true;
+  const pc = document.getElementById('pcheck'); if (pc) pc.style.display = 'none';
+  document.getElementById('pafter').innerHTML = '<div class="gate-hint">Проверяю по смыслу… ⚡</div>';
+  aiCheck(text, q, 'practice').then(res => {
+    if (res) return commitPractice(text, res.correct, res.reason, 'ai');
+    const off = checkOffline(text, q);
+    if (off === 'yes') return commitPractice(text, true, '', 'offline');
+    if (off === 'no') return commitPractice(text, false, '', 'offline');
+    practiceSelfAssess(text); // ни ИИ, ни оффлайн не дали ответа
+  });
+}
+function practiceSelfAssess(text) {
+  const q = S.questions[S.idx];
+  document.getElementById('pafter').innerHTML = `
+    <div class="feedback">🤔 Сравни сам с эталоном:</div>
+    <div class="explain"><b>Эталон.</b> ${esc(q.options[q.correct])}${q.explanation ? '<br><br>💡 ' + esc(q.explanation) : ''}</div>
+    <div class="nav-row">
+      <button class="btn nav-btn card-no" id="psno"><div class="btn-title">Не верно</div></button>
+      <button class="btn nav-btn card-yes" id="psyes"><div class="btn-title">Верно</div></button>
+    </div>`;
+  document.getElementById('psyes').onclick = () => commitPractice(text, true, '', 'self');
+  document.getElementById('psno').onclick = () => commitPractice(text, false, '', 'self');
+}
+function commitPractice(text, correct, reason, by) {
+  const q = S.questions[S.idx];
+  S.answers[S.idx] = { text: text, correct: correct, reason: reason || '', by: by };
+  const p = loadProgress(); recordInto(p, q.id, correct); saveProgress(p);
+  logEvent('practice', q.themeId, q.id, correct);
+  renderQuestionInput();
+}
+
 function onBack() {
   if (S.mode === 'exam') { if (confirm('Выйти из экзамена? Результат не сохранится.')) { clearExamTimer(); renderHome(); } }
   else if (S.mode === 'theme') { saveSession(); renderThemeList(); }
@@ -802,7 +1000,7 @@ function goPrev() {
 }
 
 function goNext() {
-  if (S.answers[S.idx] === null) return; // вперёд только после ответа
+  if (!qAnswered(S.idx)) return; // вперёд только после ответа (учитывает ввод текста)
   if (S.mode === 'practice') {
     if (S.idx < S.questions.length - 1) S.idx++;
     else { drawPractice(); S.idx++; }
@@ -845,15 +1043,43 @@ function finishTheme() {
 }
 
 /* ============ Завершение «Экзамена» ============ */
+// верно ли отвечено: test — по индексу, input — по вердикту ИИ
+function examCorrect(i) {
+  const q = S.questions[i];
+  if (q.kind === 'input') { const v = S.verdicts[i]; return !!(v && v.correct); }
+  return S.answers[i] === q.correct;
+}
+
 function finishExam() {
   clearExamTimer();
+  const sess = S; // фиксируем сессию: если за время проверки её сменят/обнулят — не трогаем чужой S
+  const toCheck = [];
+  sess.questions.forEach((q, i) => { if (q.kind === 'input') toCheck.push(i); });
+  if (!toCheck.length) { renderExamResults(); return; }
+  app.innerHTML = `<div class="loading">Проверяю развёрнутые ответы…<br><span class="gate-hint">ИИ читает твои формулировки, это займёт пару секунд ⚡</span></div>`;
+  window.scrollTo(0, 0);
+  Promise.all(toCheck.map(i => {
+    const q = sess.questions[i];
+    const txt = typeof sess.answers[i] === 'string' ? sess.answers[i] : '';
+    if (!txt.trim()) { sess.verdicts[i] = { correct: false, checked: true, empty: true }; return Promise.resolve(); }
+    return aiCheck(txt, q, 'exam').then(res => {
+      if (res) { sess.verdicts[i] = { correct: res.correct, reason: res.reason, checked: true, by: 'ai' }; return; }
+      const off = checkOffline(txt, q); // нет сети — резервная оффлайн-проверка
+      if (off === 'yes') sess.verdicts[i] = { correct: true, checked: true, by: 'offline' };
+      else if (off === 'no') sess.verdicts[i] = { correct: false, checked: true, by: 'offline' };
+      else sess.verdicts[i] = { correct: false, checked: false }; // совсем не удалось проверить
+    });
+  })).then(() => { if (S === sess) renderExamResults(); }); // отрисовываем только если сессия не сменилась
+}
+
+function renderExamResults() {
   const pr = loadProgress();
-  S.questions.forEach((q, i) => recordInto(pr, q.id, S.answers[i] === q.correct));
+  S.questions.forEach((q, i) => recordInto(pr, q.id, examCorrect(i)));
   saveProgress(pr);
-  S.questions.forEach((q, i) => logEvent('exam', q.themeId, q.id, S.answers[i] === q.correct)); // аналитика
+  S.questions.forEach((q, i) => logEvent('exam', q.themeId, q.id, examCorrect(i))); // аналитика (сводка)
   flushQueue();
   let correct = 0;
-  S.questions.forEach((q, i) => { if (S.answers[i] === q.correct) correct++; });
+  S.questions.forEach((q, i) => { if (examCorrect(i)) correct++; });
   const total = S.questions.length;
   const pct = Math.round(correct / total * 100);
   const wrong = total - correct;
@@ -863,6 +1089,22 @@ function finishExam() {
     ? (wrong === 0 ? '🎯 Без ошибок! Отлично!' : `Ошибок: ${wrong}`)
     : (passed ? `✅ СДАЛ (порог ${lvl.pass}%)` : `❌ НЕ СДАЛ (порог ${lvl.pass}%)`);
   const reviewHtml = S.questions.map((q, i) => {
+    if (q.kind === 'input') {
+      const v = S.verdicts[i] || {};
+      const your = typeof S.answers[i] === 'string' ? S.answers[i] : '';
+      const ok = !!v.correct;
+      const verdictLine = !v.checked
+        ? '<div class="review-a">⚠️ Не удалось проверить (нет сети)</div>'
+        : `<div class="review-a ${ok ? 'correct-ans' : 'your-wrong'}">${ok ? '✔ Зачтено' : '✗ Не зачтено'} <span class="by-ai">⚡ИИ</span></div>`;
+      return `
+        <div class="review-item ${ok ? 'ok' : ''}">
+          <div class="review-q">${i + 1}. ✍️ ${esc(q.q)}</div>
+          <div class="review-a your-ans">Твой ответ: ${your ? esc(your) : '—'}</div>
+          ${verdictLine}
+          ${v.reason ? `<div class="review-expl coach">👨‍🏫 ${esc(v.reason)}</div>` : ''}
+          <div class="review-a correct-ans">Эталон: ${esc(q.options[q.correct])}</div>
+        </div>`;
+    }
     const your = S.answers[i];
     const ok = your === q.correct;
     return `

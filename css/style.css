@@ -283,3 +283,32 @@ html, body {
 .adm-theme { display: flex; justify-content: space-between; font-size: 0.88rem; border-top: 1px solid var(--border); padding-top: 5px; }
 .adm-theme > span:first-child { color: var(--text); }
 .adm-th-num { color: var(--muted); white-space: nowrap; margin-left: 10px; }
+
+/* ===== Вкладки дашборда ===== */
+.adm-tabs { display: flex; gap: 8px; margin: 4px 0 14px; }
+.adm-tab {
+  flex: 1; padding: 10px 8px; font-size: 0.92rem; font-family: inherit; font-weight: 700;
+  color: var(--muted); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer;
+}
+.adm-tab.active { color: #0d130a; background: var(--gold); border-color: var(--gold); }
+
+/* ===== Карточки «Ввод-ответы» ===== */
+.inp-card {
+  border: 1px solid var(--border); border-left: 3px solid var(--gold-dim);
+  border-radius: 12px; background: var(--surface); padding: 12px 14px; margin-bottom: 12px;
+}
+.inp-card.ok { border-left-color: var(--correct); }
+.inp-card.no { border-left-color: var(--wrong); }
+.inp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.inp-meta { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+.inp-q { color: var(--text); font-weight: 600; font-size: 0.95rem; margin: 8px 0 6px; line-height: 1.35; }
+.inp-a { color: var(--text); font-size: 0.92rem; margin-bottom: 6px; line-height: 1.4; }
+.inp-a b { color: var(--muted); font-weight: 700; }
+.inp-verdict { font-size: 0.85rem; font-weight: 800; }
+.inp-verdict.v-ok { color: var(--correct); }
+.inp-verdict.v-no { color: var(--wrong); }
+.inp-reason { color: var(--muted); font-size: 0.86rem; margin-top: 6px; line-height: 1.4; font-style: italic; }
+
+/* ответ ученика в разборе экзамена */
+.review-a.your-ans { color: var(--text); }
