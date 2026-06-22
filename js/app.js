@@ -5,9 +5,9 @@ let DATA = null;
 let TICKETS = []; // билеты для режима «Экзамен по билетам»
 // inputPct — доля вопросов с вводом текста своими словами (проверяет ИИ в конце).
 const EXAM_LEVELS = {
-  easy:   { key: 'easy',   title: 'Лёгкий',  count: 10, timeSec: 0,    back: true,  pass: 0,  inputPct: 0.2 },
+  easy:   { key: 'easy',   title: 'Лёгкий',  count: 10, timeSec: 0,    back: true,  pass: 0,  inputPct: 0.3 },
   medium: { key: 'medium', title: 'Средний', count: 20, timeSec: 0,    back: true,  pass: 0,  inputPct: 0.3 },
-  hard:   { key: 'hard',   title: 'Сложный', count: 30, timeSec: 1500, back: false, pass: 80, inputPct: 0.4 }
+  hard:   { key: 'hard',   title: 'Сложный', count: 30, timeSec: 1500, back: false, pass: 80, inputPct: 0.3 }
 };
 let examInterval = null;
 const app = document.getElementById('app');
@@ -416,7 +416,7 @@ function renderExamSetup() {
     <div class="mode-desc">Выбери уровень. Чем сложнее — тем больше вопросов, часть из них нужно написать своими словами (проверит ИИ в конце), и жёстче условия.</div>
     <button class="btn btn-primary lvl" data-l="easy">
       <div class="btn-title">🟢 Лёгкий</div>
-      <div class="btn-desc">10 вопросов · ~2 с вводом текста · без таймера · можно листать назад</div>
+      <div class="btn-desc">10 вопросов · ~3 с вводом текста · без таймера · можно листать назад</div>
     </button>
     <button class="btn btn-primary lvl" data-l="medium">
       <div class="btn-title">🟡 Средний</div>
@@ -424,7 +424,7 @@ function renderExamSetup() {
     </button>
     <button class="btn btn-mistakes lvl" data-l="hard">
       <div class="btn-title">🔴 Сложный</div>
-      <div class="btn-desc">30 вопросов · ~12 с вводом текста · таймер 25 мин · без возврата · проходной 80%</div>
+      <div class="btn-desc">30 вопросов · ~9 с вводом текста · таймер 25 мин · без возврата · проходной 80%</div>
     </button>
   `;
   document.getElementById('back').onclick = renderHome;
