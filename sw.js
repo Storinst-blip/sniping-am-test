@@ -1,5 +1,5 @@
 // Service Worker — офлайн-кэш. При обновлении контента поднимай версию CACHE.
-const CACHE = 'sniper-v20';
+const CACHE = 'sniper-v21';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './js/config.js',
   './js/app.js',
   './data/questions.json',
+  './data/tickets.json',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -28,7 +29,8 @@ self.addEventListener('activate', e => {
 // Network-first для вопросов (чтобы правки подхватывались), cache-first для остального.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  const isQuestions = e.request.url.includes('questions.json');
+  // network-first для данных (вопросы и билеты), чтобы правки подхватывались
+  const isQuestions = e.request.url.includes('questions.json') || e.request.url.includes('tickets.json');
 
   if (isQuestions) {
     e.respondWith(

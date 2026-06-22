@@ -2,6 +2,7 @@
 
 /* ============ Данные ============ */
 let DATA = null;
+let TICKETS = []; // билеты для режима «Экзамен по билетам»
 // inputPct — доля вопросов с вводом текста своими словами (проверяет ИИ в конце).
 const EXAM_LEVELS = {
   easy:   { key: 'easy',   title: 'Лёгкий',  count: 10, timeSec: 0,    back: true,  pass: 0,  inputPct: 0.2 },
@@ -144,6 +145,10 @@ function renderHome() {
       <div class="btn-title">🎯 Экзамен</div>
       <div class="btn-desc">3 уровня сложности · разбор ошибок в конце</div>
     </button>
+    ${TICKETS.length ? `<button class="btn btn-primary" id="tickets">
+      <div class="btn-title">🎫 Экзамен по билетам</div>
+      <div class="btn-desc">Билет из ${TICKETS.length}: пишешь ответы — ИИ строго разбирает</div>
+    </button>` : ''}
     <button class="btn btn-primary" id="themes">
       <div class="btn-row"><span class="btn-title">📚 Темы</span><span class="count">${doneCount} / ${DATA.themes.length}</span></div>
       <div class="btn-desc">Прохождение по темам с учётом прогресса</div>
@@ -167,6 +172,7 @@ function renderHome() {
     <p class="footnote">Вошёл как <b>${esc(USER || '—')}</b> · <span class="link-btn" id="rename">сменить</span> · <span class="link-btn" id="adminlink">админ</span></p>
   `;
   document.getElementById('exam').onclick = renderExamSetup;
+  const tb = document.getElementById('tickets'); if (tb) tb.onclick = renderTicketMenu;
   document.getElementById('themes').onclick = renderThemeList;
   document.getElementById('repeat').onclick = renderRepeatMenu;
   document.getElementById('cards').onclick = renderCardsMenu;
@@ -303,7 +309,7 @@ function renderAdminSummary() {
 function renderAdminInputs() {
   // inputs[0] — шапка; далее [ts, name, mode, themeId, questionId, question, answer, correct, reason]
   const rows = ADMIN_DATA.inputs.slice(1).slice().reverse();
-  const modeLabel = m => ({ input: 'Ввод', exam: 'Экзамен', practice: 'Повторение' }[m] || (m || '—'));
+  const modeLabel = m => ({ input: 'Ввод', exam: 'Экзамен', practice: 'Повторение', ticket: 'Билет' }[m] || (m || '—'));
   const cards = rows.map(r => {
     const ts = r[0], name = r[1] || '—', mode = r[2], answer = r[6], correct = Number(r[7]) === 1, reason = r[8], question = r[5];
     return `
@@ -560,6 +566,114 @@ function renderInputMenu() {
   app.querySelectorAll('[data-theme]').forEach(b => {
     b.onclick = () => startInput(b.dataset.theme === 'all' ? null : Number(b.dataset.theme));
   });
+}
+
+/* ============ Режим «Экзамен по билетам» ============ */
+function renderTicketMenu() {
+  S = null;
+  const items = TICKETS.map(t => `
+    <button class="btn" data-n="${t.n}">
+      <div class="btn-row"><span class="btn-title">Билет № ${t.n}</span><span class="count">${t.questions.length} вопр.</span></div>
+    </button>`).join('');
+  app.innerHTML = `
+    <div class="topbar"><button class="back-btn" id="back">← Меню</button><h2>Экзамен по билетам</h2></div>
+    <div class="mode-desc">🎫 Берёшь билет, письменно отвечаешь на все вопросы своими словами. ИИ проверяет строго, как экзаменатор: укажет смысловые ошибки и что упущено. В конце — «сдал / не сдал» и разбор по каждому вопросу.</div>
+    <button class="btn btn-primary" id="rnd"><div class="btn-title">🎲 Случайный билет</div></button>
+    <div class="section-label">Или выбери билет</div>
+    ${items}
+  `;
+  document.getElementById('back').onclick = renderHome;
+  document.getElementById('rnd').onclick = () => startTicket(TICKETS[Math.floor(Math.random() * TICKETS.length)].n);
+  app.querySelectorAll('[data-n]').forEach(b => { b.onclick = () => startTicket(Number(b.dataset.n)); });
+}
+
+function startTicket(n) {
+  const t = TICKETS.find(x => x.n === n);
+  if (!t) { renderTicketMenu(); return; }
+  const questions = t.questions.map((q, i) => ({
+    q: q.q, key: q.key,
+    options: [q.key], correct: 0,        // совместимость с aiCheck: эталон = key
+    id: 'b' + n + 'q' + (i + 1), themeId: n
+  }));
+  S = { mode: 'ticket', n: n, questions, answers: questions.map(() => ''), verdicts: {} };
+  renderTicket();
+}
+
+function renderTicket() {
+  const blocks = S.questions.map((q, i) => `
+    <div class="ticket-q">
+      <div class="ticket-qn">Вопрос ${i + 1}</div>
+      <p class="question">${esc(q.q)}</p>
+      <textarea class="answer-input tk-ans" data-i="${i}" rows="4" placeholder="Напиши ответ своими словами…"
+        autocapitalize="sentences" autocorrect="on">${esc(S.answers[i])}</textarea>
+    </div>`).join('');
+  const allFilled = S.answers.every(a => a.trim() !== '');
+  app.innerHTML = `
+    <div class="topbar"><button class="back-btn" id="back">← Меню</button><h2>Билет № ${S.n}</h2></div>
+    <p class="gate-hint">Ответь на все ${S.questions.length} вопроса, затем нажми «Сдать билет». Проверит ИИ-экзаменатор.</p>
+    ${blocks}
+    <button class="btn btn-primary" id="submit" ${allFilled ? '' : 'disabled'}><div class="btn-title">Сдать билет</div></button>
+    <div id="tkafter"></div>
+  `;
+  document.getElementById('back').onclick = () => { if (confirm('Выйти из билета? Ответы не сохранятся.')) renderTicketMenu(); };
+  app.querySelectorAll('.tk-ans').forEach(ta => {
+    ta.oninput = () => {
+      S.answers[Number(ta.dataset.i)] = ta.value;
+      const ok = S.answers.every(a => a.trim() !== '');
+      const sb = document.getElementById('submit'); if (sb) sb.disabled = !ok;
+    };
+  });
+  document.getElementById('submit').onclick = submitTicket;
+}
+
+function submitTicket() {
+  if (!S.answers.every(a => a.trim() !== '')) return;
+  const sess = S; // фиксируем сессию (защита от смены S за время проверки)
+  app.innerHTML = `<div class="loading">Проверяю билет…<br><span class="gate-hint">ИИ-экзаменатор читает ответы, это займёт пару секунд ⚡</span></div>`;
+  window.scrollTo(0, 0);
+  Promise.all(sess.questions.map((q, i) => aiCheck(sess.answers[i], q, 'ticket').then(res => {
+    if (res) { sess.verdicts[i] = { correct: res.correct, reason: res.reason, checked: true }; return; }
+    const off = checkOffline(sess.answers[i], q); // нет сети — резервная оффлайн-проверка
+    if (off === 'yes') sess.verdicts[i] = { correct: true, checked: true };
+    else if (off === 'no') sess.verdicts[i] = { correct: false, checked: true };
+    else sess.verdicts[i] = { correct: false, checked: false };
+  }))).then(() => { if (S === sess) renderTicketResult(); });
+}
+
+function renderTicketResult() {
+  S.questions.forEach((q, i) => logEvent('ticket', q.themeId, q.id, !!(S.verdicts[i] && S.verdicts[i].correct)));
+  flushQueue();
+  let correct = 0;
+  S.questions.forEach((q, i) => { if (S.verdicts[i] && S.verdicts[i].correct) correct++; });
+  const total = S.questions.length;
+  const passed = correct >= 2; // порог: сдал при 2 из 3 и выше
+  const n = S.n;
+  const reviewHtml = S.questions.map((q, i) => {
+    const v = S.verdicts[i] || {};
+    const ok = !!v.correct;
+    return `
+      <div class="review-item ${ok ? 'ok' : ''}">
+        <div class="review-q">Вопрос ${i + 1}. ${esc(q.q)}</div>
+        <div class="review-a your-ans">Твой ответ: ${esc(S.answers[i] || '—')}</div>
+        ${!v.checked
+          ? '<div class="review-a">⚠️ Не удалось проверить (нет сети)</div>'
+          : `<div class="review-a ${ok ? 'correct-ans' : 'your-wrong'}">${ok ? '✔ Зачтено' : '✗ Не зачтено'} <span class="by-ai">⚡ИИ</span></div>`}
+        ${v.reason ? `<div class="review-expl coach">👨‍🏫 ${esc(v.reason)}</div>` : ''}
+        <div class="review-expl"><b>Эталон.</b> ${esc(q.key)}</div>
+      </div>`;
+  }).join('');
+  app.innerHTML = `
+    <h1 class="app-title">Билет № ${n}</h1>
+    <div class="result-score">${correct}/${total}</div>
+    <p class="result-line ticket-verdict ${passed ? 'passed' : 'failed'}">${passed ? '✅ СДАЛ' : '❌ НЕ СДАЛ'}</p>
+    <button class="btn btn-primary" id="another"><div class="btn-title">🎫 Другой билет</div></button>
+    <button class="btn" id="home"><div class="btn-title">← В меню</div></button>
+    <div class="section-label">Разбор по вопросам</div>
+    ${reviewHtml}
+  `;
+  window.scrollTo(0, 0);
+  document.getElementById('another').onclick = renderTicketMenu;
+  document.getElementById('home').onclick = renderHome;
 }
 
 /* ============ Текстовый анализ ответа (оффлайн) ============ */
@@ -1087,9 +1201,11 @@ function finishMistakes() {
 }
 
 /* ============ Загрузка ============ */
-fetch('./data/questions.json')
-  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-  .then(d => { DATA = d; USER = getUser(); USER ? renderHome() : renderNameGate(); })
+Promise.all([
+  fetch('./data/questions.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+  fetch('./data/tickets.json').then(r => r.ok ? r.json() : { tickets: [] }).catch(() => ({ tickets: [] }))
+])
+  .then(([d, t]) => { DATA = d; TICKETS = (t && t.tickets) || []; USER = getUser(); USER ? renderHome() : renderNameGate(); })
   .catch(err => { app.innerHTML = `<div class="loading">Ошибка загрузки вопросов:<br>${esc(err.message)}</div>`; });
 
 if ('serviceWorker' in navigator) {
