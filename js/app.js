@@ -882,15 +882,13 @@ function renderQuestion() {
     ? `<div class="explain"><b>Пояснение.</b> ${esc(q.explanation)}</div>` : '';
   const fb = reveal ? `<div class="feedback ${ans === q.correct ? 'ok' : 'no'}">${ans === q.correct ? '✔ Верно!' : '✗ Неверно'}</div>` : '';
 
-  // правая кнопка навигации (в темах/ошибках можно листать вперёд свободно)
-  const freeNav = (S.mode === 'theme' || S.mode === 'mistakes');
-  const navOk = answered || freeNav;
+  // правая кнопка навигации — всегда активна: листай вопросы и выбирай, на какой отвечать
   let rightBtn;
   if (last) {
-    rightBtn = `<button class="btn btn-primary nav-btn" id="finish" ${navOk ? '' : 'disabled'}>
+    rightBtn = `<button class="btn btn-primary nav-btn" id="finish">
       <div class="btn-title">${S.mode === 'exam' ? 'Завершить экзамен' : 'Завершить тему'}</div></button>`;
   } else {
-    rightBtn = `<button class="btn btn-primary nav-btn" id="next" ${navOk ? '' : 'disabled'}>
+    rightBtn = `<button class="btn btn-primary nav-btn" id="next">
       <div class="btn-title">Вперёд →</div></button>`;
   }
 
@@ -956,19 +954,16 @@ function renderQuestionInput() {
   const checkBtn = (!isExam && !checked)
     ? '<button class="btn btn-primary" id="pcheck"><div class="btn-title">Проверить</div></button>' : '';
 
+  // кнопка вперёд/завершить — всегда активна: можно листать и пропускать вопросы
   let rightBtn;
   if (isExam) {
     const id = last ? 'finish' : 'next';
-    const label = last ? 'Завершить экзамен' : 'Вперёд →';
-    rightBtn = `<button class="btn btn-primary nav-btn" id="${id}" ${answered ? '' : 'disabled'}><div class="btn-title">${label}</div></button>`;
+    rightBtn = `<button class="btn btn-primary nav-btn" id="${id}"><div class="btn-title">${last ? 'Завершить экзамен' : 'Вперёд →'}</div></button>`;
   } else if (S.mode === 'input') {
-    // ввод ответа: конечный список со свободным листанием вперёд (можно пропускать)
     const id = last ? 'finish' : 'next';
-    const label = last ? 'Завершить' : 'Вперёд →';
-    rightBtn = `<button class="btn btn-primary nav-btn" id="${id}"><div class="btn-title">${label}</div></button>`;
+    rightBtn = `<button class="btn btn-primary nav-btn" id="${id}"><div class="btn-title">${last ? 'Завершить' : 'Вперёд →'}</div></button>`;
   } else {
-    // повторение: «Вперёд» доступна только после проверки
-    rightBtn = `<button class="btn btn-primary nav-btn" id="next" ${checked ? '' : 'disabled'}><div class="btn-title">Вперёд →</div></button>`;
+    rightBtn = `<button class="btn btn-primary nav-btn" id="next"><div class="btn-title">Вперёд →</div></button>`;
   }
 
   app.innerHTML = `
@@ -999,11 +994,6 @@ function renderQuestionInput() {
   if (ta && !checked) {
     ta.oninput = () => {
       S.answers[S.idx] = ta.value; // черновик/ответ сохраняем по ходу ввода
-      if (isExam) { // в экзамене «Вперёд/Завершить» доступны только при непустом тексте
-        const has = ta.value.trim() !== '';
-        const nb = document.getElementById('next'); if (nb) nb.disabled = !has;
-        const fb = document.getElementById('finish'); if (fb) fb.disabled = !has;
-      }
       saveSession(); // resume для «Ввода ответа» (no-op для practice/exam)
     };
   }
@@ -1080,9 +1070,7 @@ function goPrev() {
 }
 
 function goNext() {
-  // в обучающих режимах можно листать вперёд свободно (даже не ответив); экзамен/повторение — только после ответа
-  const freeNav = (S.mode === 'theme' || S.mode === 'input' || S.mode === 'mistakes');
-  if (!freeNav && !qAnswered(S.idx)) return;
+  // листать вперёд можно всегда, в любом режиме (даже не ответив на текущий вопрос)
   if (S.mode === 'practice') {
     if (S.idx < S.questions.length - 1) S.idx++;
     else { drawPractice(); S.idx++; }
